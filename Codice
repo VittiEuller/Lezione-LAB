@@ -1,0 +1,203 @@
+// I/O from console, with prompt
+import promptSync from 'prompt-sync'
+const prompt = promptSync()
+
+// Interfaces
+interface Card {
+  name: string
+  type: 'suspect' | 'weapon' | 'room'
+}
+
+interface Guess {
+  murderer: string | null,
+  weapon: string | null,
+  room: string | null
+}
+
+// Exceptions
+class CluedoError extends Error { ; }
+class PlayersError extends CluedoError { ; }
+
+// Game
+class Cluedo {
+  // * * STATIC FIELDS & METHODS * * 
+  // Cards
+  public static suspects: Card[] = [
+    { name: 'Miss Scarlet', type: 'suspect' },
+    { name: 'Colonel Mustard', type: 'suspect' },
+    { name: 'Mrs. White', type: 'suspect' },
+    { name: 'Mr. Green', type: 'suspect' },
+    { name: 'Mrs. Peacock', type: 'suspect' },
+    { name: 'Professor Plum', type: 'suspect' }
+  ]
+  public static weapons: Card[] = [
+    { name: 'Candlestick', type: 'weapon' },
+    { name: 'Dagger', type: 'weapon' },
+    { name: 'Lead Pipe', type: 'weapon' },
+    { name: 'Revolver', type: 'weapon' },
+    { name: 'Rope', type: 'weapon' },
+    { name: 'Wrench', type: 'weapon' }
+  ]
+  public static rooms: Card[] = [
+    { name: 'Kitchen', type: 'room' },
+    { name: 'Ballroom', type: 'room' },
+    { name: 'Conservatory', type: 'room' },
+    { name: 'Dining Room', type: 'room' },
+    { name: 'Billiard Room', type: 'room' },
+    { name: 'Library', type: 'room' },
+    { name: 'Lounge', type: 'room' },
+    { name: 'Hall', type: 'room' },
+    { name: 'Study', type: 'room' }
+  ]
+  // Static method to generate empty guess 
+  public static emptyGuess(): Guess {
+    return { murderer: null, weapon: null, room: null }
+  }
+  // Static method to print a guess
+  public static printGuess(guess: Guess): void {
+    console.log("\tMurderer: " + guess.murderer)
+    console.log("\tWeapon: " + guess.weapon)
+    console.log("\tRoom: " + guess.room)
+  }
+
+  // * * GAME INSTANCE FIELDS & METHODS * *  
+  // Solution
+  private murderer: Card
+  private weapon: Card
+  private room: Card 
+  // Players
+  private players: string[]
+  private guesses: Guess[] // Using same index to associate player with guess
+  private cpu: CluedoSolver
+  // Game turns
+  private turn: number
+  private winner: number
+  // Constructor
+  constructor(players: string[]) {
+    if (players.length < 1)
+      throw new PlayersError("At least 1 player is needed to play");
+    // Randomly choose solution
+    this.murderer = Cluedo.suspects[Math.floor(Math.random() * Cluedo.suspects.length)];
+    this.weapon = Cluedo.weapons[Math.floor(Math.random() * Cluedo.weapons.length)];
+    this.room = Cluedo.rooms[Math.floor(Math.random() * Cluedo.rooms.length)];
+    // Set players 
+    this.players = ["cpu"]
+    this.cpu = new CluedoSolver()
+    this.players.push(...players)
+    // Set game status (CPU to start, empty guesses)
+    this.turn = 0
+    this.winner = -1
+    // Empty guesses (initially)
+    this.guesses = []
+    for (let playerIdx in this.players)
+      this.guesses[playerIdx] = Cluedo.emptyGuess()
+  }
+  // Private method to check guesses (nullifying wrong guesses, if any)
+  private checkGuess(guess: Guess): Guess {
+    if (this.murderer.name != guess.murderer) 
+      guess.murderer = null
+    if (this.weapon.name != guess.weapon)
+      guess.weapon = null
+    if (this.room.name != guess.room)
+      guess.room = null
+    // If CPU turn, notify CPU about good guesses
+    if (this.turn === 0) 
+      this.cpu.setGuess(guess)
+    else { // Otherwise, display result
+      if (guess.murderer)
+        console.log("--> " + guess.murderer + " is the murderer!")
+      if (guess.weapon)
+        console.log("--> " + guess.weapon + " is the murder weapon!")
+      if (guess.room)
+        console.log("--> " + guess.room + " is the murder place!")
+    }
+    return guess
+  }
+  // Play
+  public play() {
+    console.log("Welcome to the Cluedo mansion.")
+    console.log("The mansion's owner died: Who can solve the murderer?")
+    // Play until someone wins
+    while (this.winner < 0) {
+      // Display player
+      let player: string = this.players[this.turn]
+      console.log("\n*** Turn: " + player.toUpperCase() + " ***")
+      // Update guess
+      let guess: Guess = this.guesses[this.turn]
+      if (player === "cpu") { // CPU to guess
+        // Get next guess
+        guess = this.cpu.nextGuess()
+        // Print CPU guess
+        console.log("CPU tries with the following guess:")
+        Cluedo.printGuess(guess)
+      } else { // Player to guess
+        // Guess murderer
+        guess.murderer = prompt("Murderer? ")
+        // Guess weapon
+        guess.weapon = prompt("Weapon? ")
+        // Guess room 
+        guess.room = prompt("Room? ")
+      }
+      // Check player's guess 
+      guess = this.checkGuess(guess)
+      // Update player's guess
+      this.guesses[this.turn] = guess
+      // Check winning guess
+      if (guess.murderer && guess.weapon && guess.room)
+        this.winner = this.turn
+      // Update turn
+      this.turn = (this.turn+1) % this.players.length
+    }
+    // Display winner and its guess
+    console.log("\n*** We have a winner ***")
+    console.log(this.players[this.winner].toUpperCase() + " solved the murder mistery:")
+    Cluedo.printGuess(this.guesses[this.winner])
+  }
+}
+
+// AI to solve Cluedo game
+class CluedoSolver {
+  // Former guesses
+  private suspects: Card[]
+  private weapons: Card[]
+  private rooms: Card[]
+  private guess: Guess
+  // Constructor
+  constructor() {
+    this.suspects = []
+    this.weapons = []
+    this.rooms = []
+    this.guess = Cluedo.emptyGuess()
+  }
+  // Guess generator method 
+  public nextGuess(): Guess {
+    if (!this.guess.murderer) {
+      let suspects: Card[] = Cluedo.suspects.filter(s => !this.suspects.includes(s))
+      let suspect: Card = suspects[Math.floor(Math.random()*suspects.length)]
+      this.suspects.push(suspect)
+      this.guess.murderer = suspect.name 
+    }
+    if (!this.guess.weapon) {
+      let weapons: Card[] = Cluedo.weapons.filter(w => !this.weapons.includes(w))
+      let weapon: Card = weapons[Math.floor(Math.random() * weapons.length)];
+      this.weapons.push(weapon)
+      this.guess.weapon = weapon.name
+    }
+    if (!this.guess.room) {
+      let rooms: Card[] = Cluedo.rooms.filter(r => !this.rooms.includes(r))
+      let room: Card = rooms[Math.floor(Math.random() * rooms.length)]
+      this.rooms.push(room)
+      this.guess.room = room.name;
+    }
+    return this.guess
+  }
+  // Set guess method
+  // (used to fix "good guesses")
+  public setGuess(guess:Guess) {
+    this.guess = guess
+  }
+}
+
+let game: Cluedo = new Cluedo(["bartolomheow","alexander","lorenzo"])
+game.play()
+
