@@ -200,4 +200,4 @@ class CluedoSolver {
 
 let game: Cluedo = new Cluedo(["bartolomheow","alexander","lorenzo"])
 game.play()
-
+console.log("Hello")
